@@ -22,7 +22,7 @@ export const GAME_EVENTS: GameEvent[] = [
   {
     id: 'evt-002',
     title: '神秘包裹',
-    description: '一个匿名包裹寄到了博物馆，打开后发现是星河-0原型机的原始主板！附带的纸条上写着："让它回家。"',
+    description: '一个匿名包裹寄到了博物馆，打开后发现是星河X-Watch原型机！附带的纸条上写着："让它回家。"',
     type: 'hidden',
     icon: '📦',
     triggered: false,
@@ -33,15 +33,15 @@ export const GAME_EVENTS: GameEvent[] = [
     },
     reward: {
       type: 'collection',
-      value: '神秘配件',
-      label: '获得稀有配件'
+      value: 'auc-xh-103',
+      label: '获得藏品：星河智能腕表 X-Watch Proto'
     },
     cycle: 0
   },
   {
     id: 'evt-003',
     title: '馆藏里程碑',
-    description: '馆藏评分突破300分！当地报纸头版报道了你的博物馆，越来越多的游客开始关注。',
+    description: '馆藏评分突破300分！当地报纸头版报道了你的博物馆，一位不愿透露姓名的收藏家捐赠了一台星韵Hi-Fi功放。',
     type: 'milestone',
     icon: '🏆',
     triggered: false,
@@ -49,9 +49,9 @@ export const GAME_EVENTS: GameEvent[] = [
       minScore: 300
     },
     reward: {
-      type: 'reputation',
-      value: 20,
-      label: '+20 口碑指数'
+      type: 'collection',
+      value: 'auc-xh-104',
+      label: '获得藏品：星韵 Hi-Fi 功放'
     },
     cycle: 0
   },
@@ -127,7 +127,7 @@ export const GAME_EVENTS: GameEvent[] = [
   {
     id: 'evt-008',
     title: '星河之夜',
-    description: '你举办了一场仅限VIP的"星河之夜"私人预览会，邀请了当地名流和科技界人士出席。',
+    description: '你举办了一场仅限VIP的"星河之夜"私人预览会，邀请了当地名流和科技界人士出席。星河科技现任CEO到场祝贺，并捐赠了一台珍贵的4K概念电视原型机。',
     type: 'achievement',
     icon: '🥂',
     triggered: false,
@@ -136,16 +136,16 @@ export const GAME_EVENTS: GameEvent[] = [
       minReputation: 70
     },
     reward: {
-      type: 'budget',
-      value: 50000,
-      label: '+¥50,000 赞助收入'
+      type: 'collection',
+      value: 'auc-xh-105',
+      label: '获得藏品：星影 4K 概念电视'
     },
     cycle: 0
   },
   {
     id: 'evt-009',
-    title: '失落的X-Watch',
-    description: '前星河研发主管在新闻上看到了你的博物馆，主动联系表示愿意将自己珍藏的X-Watch原型机捐赠给博物馆。他说："它终于找到了归宿。"',
+    title: '失落的星河-0',
+    description: '前星河联合创始人在新闻上看到了你的博物馆，主动联系表示愿意将自己珍藏的星河-0原型机捐赠给博物馆。他说："它终于找到了真正的归宿。"',
     type: 'hidden',
     icon: '⌚',
     triggered: false,
@@ -156,8 +156,8 @@ export const GAME_EVENTS: GameEvent[] = [
     },
     reward: {
       type: 'collection',
-      value: 'X-Watch原型机',
-      label: '获得传说藏品'
+      value: 'auc-xh-101',
+      label: '获得传说藏品：星河-0 原型机'
     },
     cycle: 0
   },

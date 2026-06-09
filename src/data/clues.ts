@@ -46,7 +46,7 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: '教育市场的突破',
     content: '1985年发布的星河-I能够成功，关键在于抓住了教育信息化的政策窗口。星河团队与十多所重点中学合作，免费提供设备建立计算机教室。这种"种子策略"为后续的销量爆发奠定了口碑基础。',
     unlocked: false,
-    unlockCondition: '收藏星河-I并展出',
+    unlockCondition: '口碑指数≥30，且星河-I型个人电脑(col-xh-001)已展出或已修复+鉴定',
     requiredReputation: 30,
     relatedCollectionIds: ['col-xh-001'],
     interviews: [
@@ -67,7 +67,7 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: 'GameBox的诞生',
     content: '1994年的GameBox项目最初在公司内部备受质疑。"一家电脑公司为什么要做玩具？"但项目负责人张晓龙坚持认为，游戏是计算机技术走进家庭的最佳切入点。他用自己的年终奖作为赌注，立下了军令状。',
     unlocked: false,
-    unlockCondition: '收藏GameBox初代并展出',
+    unlockCondition: '口碑指数≥40，且GameBox初代(col-xh-004)已展出或已修复+鉴定',
     requiredReputation: 40,
     relatedCollectionIds: ['col-xh-004', 'auc-xh-102'],
     interviews: [
@@ -88,9 +88,9 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: '被取消的智能手表',
     content: '2004年的X-Watch项目在内部代号为"Project Apollo"。这款产品的功能在当时看来近乎科幻：心率监测、消息推送、语音识别、无线充电。但董事会认为"消费者还没准备好"，项目在量产前30天被紧急叫停。',
     unlocked: false,
-    unlockCondition: '馆藏评分达到400',
+    unlockCondition: '口碑指数≥50，且展出2件及以上90年代产品',
     requiredReputation: 50,
-    relatedCollectionIds: ['auc-xh-103'],
+    relatedCollectionIds: ['col-xh-004', 'col-xh-002', 'col-xh-003', 'col-xh-005', 'col-xh-006', 'col-xh-007', 'col-xh-008', 'auc-xh-102', 'auc-xh-104'],
     interviews: [
       {
         id: 'int-005-1',
@@ -117,9 +117,9 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: '黄金限定版的秘密',
     content: '1995年GameBox黄金限定版的镀金工艺来自一家日本传统工艺品作坊。每台机身的镀金工序需要耗时72小时，由匠人手工完成。编号#001送给了当时的首相，#042是张晓龙自己的收藏。',
     unlocked: false,
-    unlockCondition: '成功拍得GameBox限定版',
+    unlockCondition: '口碑指数≥60，且拥有史诗(epic)及以上藏品展出',
     requiredReputation: 60,
-    relatedCollectionIds: ['auc-xh-102'],
+    relatedCollectionIds: ['auc-xh-102', 'col-xh-004', 'auc-xh-101', 'auc-xh-103', 'auc-xh-105'],
     interviews: [
       {
         id: 'int-006-1',
@@ -138,8 +138,8 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: '4K电视的先驱者',
     content: '2008年CES展台上的4K概念电视震惊了整个行业。这台概念机的面板技术来自星河与台湾面板厂的秘密合作。虽然最终因液晶供应链不成熟未能量产，但相关专利后来被多家公司授权使用。',
     unlocked: false,
-    unlockCondition: '研究台解锁3条线索后',
-    requiredCycle: 3,
+    unlockCondition: '口碑指数≥70，且展出藏品数量≥3件',
+    requiredReputation: 70,
     relatedCollectionIds: ['auc-xh-105'],
     interviews: [
       {
@@ -159,8 +159,8 @@ export const INITIAL_CLUES: ResearchClue[] = [
     title: 'Hi-Fi音响的情怀',
     content: '星韵系列Hi-Fi功放是星河产品线中的一个"异类"。它从来不是利润中心，但坚持生产了二十年。陈志远说："公司赚钱了，总得有人做些不为赚钱的事。"星河的工程师们会在周末带着自己DIY的音箱来公司比拼。',
     unlocked: false,
-    unlockCondition: '口碑指数达到70',
-    requiredReputation: 70,
+    unlockCondition: '口碑指数≥80，且所有展出藏品评分≥50',
+    requiredReputation: 80,
     relatedCollectionIds: ['col-xh-002', 'col-xh-007', 'auc-xh-104'],
     interviews: [
       {

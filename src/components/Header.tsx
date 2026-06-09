@@ -1,8 +1,9 @@
-import React from 'react';
-import { Calendar, Wallet, Star, Trophy, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Calendar, Wallet, Star, Trophy, Sparkles, Settings as SettingsIcon } from 'lucide-react';
 import { useGameStore } from '../store/useGameStore';
 import { formatCurrency } from '../utils/formatters';
 import { ModuleType, GamePhase } from '../types';
+import { SettingsModal } from './SettingsModal';
 
 const navItems: { key: ModuleType; label: string }[] = [
   { key: 'hall', label: '展厅地图' },
@@ -27,6 +28,7 @@ const phaseColors: Record<GamePhase, string> = {
 };
 
 export const Header: React.FC = () => {
+  const [showSettings, setShowSettings] = useState<boolean>(false);
   const {
     cycle,
     phase,
@@ -124,6 +126,13 @@ export const Header: React.FC = () => {
           </div>
 
           <button
+            onClick={() => setShowSettings(true)}
+            className="w-10 h-10 rounded-lg bg-museum-brass/20 border border-museum-brass/40 hover:bg-museum-brass/30 flex items-center justify-center text-museum-cream transition-all"
+          >
+            <SettingsIcon className="w-5 h-5" />
+          </button>
+
+          <button
             onClick={advanceCycle}
             disabled={!isSettlementPhase}
             className={`px-5 py-2 rounded-xl font-bold transition-all duration-200 flex items-center gap-2 ${
@@ -137,6 +146,7 @@ export const Header: React.FC = () => {
           </button>
         </div>
       </div>
+      <SettingsModal isOpen={showSettings} onClose={() => setShowSettings(false)} />
     </header>
   );
 };

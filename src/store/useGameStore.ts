@@ -31,6 +31,8 @@ import {
 } from '../utils/scoreCalculator';
 import { processTriggeredEvents, applyEventReward } from '../utils/eventTrigger';
 
+const SAVE_KEY = 'product-museum-save-v1';
+
 interface GameStoreState {
   cycle: number;
   phase: GamePhase;
@@ -61,6 +63,8 @@ interface GameStoreState {
   currentEvent: GameEvent | null;
   showReportModal: boolean;
   lastReport: FinancialReport | null;
+
+  currentAuctionResult: { type: 'won' | 'lost' | null; itemId: string | null; price: number | null; itemName?: string | null };
 
   taskStats: {
     authCount: number;
@@ -107,7 +111,11 @@ interface GameStoreActions {
   answerQuestion: (feedbackId: string, optionIndex: number) => void;
 
   placeBid: (auctionId: string, bidAmount: number) => void;
+  skipAuctionRound: (auctionId: string) => void;
+  runOpponentBidsInternal: (auctionItem: AuctionItem) => AuctionItem;
+  finalizeAuctionRound: (updatedAuction: AuctionItem) => void;
   processAuctionRound: () => void;
+  checkAndUnlockClues: () => void;
 
   updateTaskProgress: () => void;
   claimTaskReward: (taskId: string) => void;
@@ -117,6 +125,11 @@ interface GameStoreActions {
 
   settleCycle: () => void;
   advanceCycle: () => void;
+
+  resetGame: () => void;
+  saveGame: () => void;
+  loadGame: (data: any) => void;
+  clearProgress: () => void;
 }
 
 const INITIAL_PLAN: ExhibitionPlan = {
@@ -131,10 +144,24 @@ const INITIAL_PLAN: ExhibitionPlan = {
   handbookCover: '🎨',
   handbookPublished: false,
   brochureCount: 500,
+  handbookPrintCost: 0,
+  handbookPrinted: 0,
   routeDesignScore: 65,
   themeFitScore: 0,
   overallScore: 0,
   route: DEFAULT_ROUTE
+};
+
+const INITIAL_TASK_STATS = {
+  authCount: 0,
+  restoreCount: 0,
+  deployCount: 0,
+  answerCount: 0,
+  clueUnlocked: 2,
+  epicCount: 0,
+  fullAccessory: 0,
+  totalAccessoryMatched: 0,
+  exhibit90sCount: 0
 };
 
 const createInitialAuctionItems = (): AuctionItem[] => {
@@ -153,28 +180,83 @@ const createInitialAuctionItems = (): AuctionItem[] => {
   }));
 };
 
-export const useGameStore = create<GameStoreState & GameStoreActions>((set, get) => ({
-  cycle: 1,
-  phase: 'planning',
-  budget: 100000,
-  reputation: 20,
-  collectionScore: 0,
-  totalVisitors: 0,
-  income: 0,
-  expenses: 0,
+const getInitialCollections = () => INITIAL_COLLECTIONS.map(c => ({
+  ...c,
+  score: calculateCollectionScore(c)
+}));
 
-  collections: INITIAL_COLLECTIONS.map(c => ({
-    ...c,
-    score: calculateCollectionScore(c)
-  })),
-  cases: EXHIBITION_CASES,
-  feedbacks: INITIAL_VISITOR_FEEDBACK,
-  clues: INITIAL_CLUES,
-  tasks: INITIAL_TASKS,
-  auctionItems: createInitialAuctionItems(),
-  events: GAME_EVENTS,
-  reports: [],
-  plan: INITIAL_PLAN,
+const loadFromStorage = (): Partial<GameStoreState> | null => {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const result: Partial<GameStoreState> = {};
+    const coreKeys: (keyof GameStoreState)[] = [
+      'cycle', 'phase', 'budget', 'reputation', 'collectionScore',
+      'totalVisitors', 'income', 'expenses', 'collections', 'cases',
+      'feedbacks', 'clues', 'tasks', 'auctionItems', 'events',
+      'reports', 'plan', 'taskStats'
+    ];
+    coreKeys.forEach(key => {
+      if (parsed[key] !== undefined) {
+        (result as any)[key] = parsed[key];
+      }
+    });
+    return result;
+  } catch {
+    return null;
+  }
+};
+
+const persistSave = (state: GameStoreState) => {
+  try {
+    const saveData = {
+      savedAt: Date.now(),
+      cycle: state.cycle,
+      phase: state.phase,
+      budget: state.budget,
+      reputation: state.reputation,
+      collectionScore: state.collectionScore,
+      totalVisitors: state.totalVisitors,
+      income: state.income,
+      expenses: state.expenses,
+      collections: state.collections,
+      cases: state.cases,
+      feedbacks: state.feedbacks,
+      clues: state.clues,
+      tasks: state.tasks,
+      auctionItems: state.auctionItems,
+      events: state.events,
+      reports: state.reports,
+      plan: state.plan,
+      taskStats: state.taskStats
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+  } catch {
+  }
+};
+
+const loadedData = loadFromStorage();
+
+export const useGameStore = create<GameStoreState & GameStoreActions>((set, get) => ({
+  cycle: loadedData?.cycle ?? 1,
+  phase: loadedData?.phase ?? 'planning',
+  budget: loadedData?.budget ?? 100000,
+  reputation: loadedData?.reputation ?? 20,
+  collectionScore: loadedData?.collectionScore ?? 0,
+  totalVisitors: loadedData?.totalVisitors ?? 0,
+  income: loadedData?.income ?? 0,
+  expenses: loadedData?.expenses ?? 0,
+
+  collections: loadedData?.collections ?? getInitialCollections(),
+  cases: loadedData?.cases ?? EXHIBITION_CASES,
+  feedbacks: loadedData?.feedbacks ?? INITIAL_VISITOR_FEEDBACK,
+  clues: loadedData?.clues ?? INITIAL_CLUES,
+  tasks: loadedData?.tasks ?? INITIAL_TASKS,
+  auctionItems: loadedData?.auctionItems ?? createInitialAuctionItems(),
+  events: loadedData?.events ?? GAME_EVENTS,
+  reports: loadedData?.reports ?? [],
+  plan: loadedData?.plan ?? INITIAL_PLAN,
 
   currentModule: 'warehouse',
   selectedCollectionId: null,
@@ -187,17 +269,9 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
   showReportModal: false,
   lastReport: null,
 
-  taskStats: {
-    authCount: 0,
-    restoreCount: 0,
-    deployCount: 0,
-    answerCount: 0,
-    clueUnlocked: 2,
-    epicCount: 0,
-    fullAccessory: 0,
-    totalAccessoryMatched: 0,
-    exhibit90sCount: 0
-  },
+  currentAuctionResult: { type: null, itemId: null, price: null, itemName: null },
+
+  taskStats: loadedData?.taskStats ?? INITIAL_TASK_STATS,
 
   setCurrentModule: (module) => set({ currentModule: module }),
   setSelectedCollection: (id) => set({ selectedCollectionId: id }),
@@ -231,9 +305,14 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     });
     return true;
   },
-  addReputation: (amount) => set((state) => ({
-    reputation: Math.max(0, Math.min(100, state.reputation + amount))
-  })),
+  addReputation: (amount) => {
+    set((state) => ({
+      reputation: Math.max(0, Math.min(100, state.reputation + amount))
+    }));
+    setTimeout(() => {
+      get().checkAndUnlockClues();
+    }, 0);
+  },
   addVisitors: (count) => set((state) => ({
     totalVisitors: state.totalVisitors + count
   })),
@@ -274,6 +353,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     });
     state.setNotification({ message, type: diff <= 2 ? 'success' : 'info' });
     state.updateTaskProgress();
+    state.checkAndUnlockClues();
+    persistSave(get());
   },
 
   restoreCollection: (id) => {
@@ -298,6 +379,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     });
     state.setNotification({ message: `修复完成！${item.name}的说明已完整恢复。`, type: 'success' });
     state.updateTaskProgress();
+    state.checkAndUnlockClues();
+    persistSave(get());
   },
 
   matchAccessory: (collectionId, accessoryId) => {
@@ -338,6 +421,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       : `配件匹配成功！`;
     state.setNotification({ message, type: 'success' });
     state.updateTaskProgress();
+    persistSave(get());
   },
 
   deployToCase: (collectionId, caseId) => {
@@ -411,6 +495,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       type: 'success'
     });
     get().updateTaskProgress();
+    get().checkAndUnlockClues();
+    persistSave(get());
   },
 
   removeFromCase: (caseId) => {
@@ -434,6 +520,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
 
     set({ collections, cases, taskStats: { ...state.taskStats, deployCount, exhibit90sCount } });
     get().updateTaskProgress();
+    get().checkAndUnlockClues();
+    persistSave(get());
   },
 
   updateCaseLighting: (caseId, lighting) => {
@@ -477,14 +565,21 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
 
   publishHandbook: () => {
     const state = get();
-    const cost = 3000;
+    const brochureCount = state.plan.brochureCount;
+    const cost = brochureCount * 8;
     if (!state.deductBudget(cost)) return;
-    const plan = { ...state.plan, handbookPublished: true };
+    const plan = {
+      ...state.plan,
+      handbookPublished: true,
+      handbookPrintCost: cost,
+      handbookPrinted: brochureCount
+    };
     const { total } = calculateCollectionScoreOverall(state.collections, plan, state.reputation);
     plan.overallScore = total;
     set({ plan, collectionScore: total });
-    get().setNotification({ message: '展览手册已成功发布！口碑提升+8', type: 'success' });
+    get().setNotification({ message: `展览手册已发布！印量${brochureCount}册，花费¥${cost.toLocaleString()}，口碑提升+8`, type: 'success' });
     get().addReputation(8);
+    persistSave(get());
   },
 
   answerQuestion: (feedbackId, optionIndex) => {
@@ -519,6 +614,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       type: isCorrect ? 'success' : 'warning'
     });
     get().updateTaskProgress();
+    persistSave(get());
   },
 
   placeBid: (auctionId, bidAmount) => {
@@ -536,22 +632,175 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       return;
     }
 
-    const auctionItems = state.auctionItems.map(a => {
-      if (a.id === auctionId) {
-        return {
-          ...a,
-          currentPrice: bidAmount,
-          myBid: bidAmount,
-          highestBidder: '你',
-          isLeading: true,
-          bidHistory: [...a.bidHistory, { bidder: '你', amount: bidAmount, time: Date.now() }]
-        };
+    let updatedAuction = {
+      ...auction,
+      currentPrice: bidAmount,
+      myBid: bidAmount,
+      highestBidder: '你',
+      isLeading: true,
+      bidHistory: [...auction.bidHistory, { bidder: '你', amount: bidAmount, time: Date.now() }]
+    };
+
+    updatedAuction = state.runOpponentBidsInternal(updatedAuction);
+    state.finalizeAuctionRound(updatedAuction);
+  },
+
+  skipAuctionRound: (auctionId) => {
+    const state = get();
+    const auction = state.auctionItems.find(a => a.id === auctionId);
+    if (!auction || auction.status !== 'active') return;
+
+    const updatedAuction = state.runOpponentBidsInternal({ ...auction });
+    state.finalizeAuctionRound(updatedAuction);
+  },
+
+  runOpponentBidsInternal: (auctionItem) => {
+    let currentPrice = auctionItem.currentPrice;
+    let highestBidder = auctionItem.highestBidder;
+    let isLeading = auctionItem.isLeading;
+    let myBid = auctionItem.myBid;
+    const bidHistory = [...auctionItem.bidHistory];
+
+    auctionItem.opponents.forEach(opponent => {
+      if (opponent.budget <= currentPrice) return;
+      const maxBid = auctionItem.collection.estimatedValue * opponent.maxBidMultiplier;
+      if (currentPrice >= maxBid) return;
+
+      let bidChance = 0.6;
+      if (opponent.style === 'aggressive') bidChance = 0.85;
+      else if (opponent.style === 'conservative') bidChance = 0.45;
+      else bidChance = 0.6 + (Math.random() - 0.5) * 0.3;
+
+      if (Math.random() >= bidChance) return;
+
+      const incrementPct = opponent.style === 'aggressive' ? 0.08 + Math.random() * 0.07
+        : opponent.style === 'conservative' ? 0.03 + Math.random() * 0.04
+        : 0.05 + Math.random() * 0.08;
+      let increment = Math.max(Math.floor(auctionItem.collection.estimatedValue * incrementPct), 500);
+      let newBid = currentPrice + increment;
+      newBid = Math.min(newBid, Math.floor(maxBid));
+
+      if (newBid > currentPrice && opponent.budget >= newBid) {
+        if (myBid > newBid) {
+          newBid = myBid + increment;
+          if (newBid > maxBid) return;
+        }
+        currentPrice = newBid;
+        highestBidder = opponent.name;
+        isLeading = false;
+        bidHistory.push({ bidder: opponent.name, amount: newBid, time: Date.now() });
       }
-      return a;
     });
 
-    set({ auctionItems });
-    state.setNotification({ message: `出价成功！当前最高价：¥${bidAmount.toLocaleString()}`, type: 'success' });
+    const newTimeLeft = auctionItem.timeLeft - 1;
+
+    return {
+      ...auctionItem,
+      currentPrice,
+      highestBidder,
+      isLeading,
+      myBid: isLeading ? myBid : 0,
+      bidHistory,
+      timeLeft: newTimeLeft
+    };
+  },
+
+  finalizeAuctionRound: (updatedAuction) => {
+    const state = get();
+    let auctionItems = state.auctionItems.map(a =>
+      a.id === updatedAuction.id ? { ...updatedAuction } : a
+    );
+
+    let finalAuction = auctionItems.find(a => a.id === updatedAuction.id)!;
+
+    if (finalAuction.timeLeft <= 0) {
+      let collections = state.collections;
+      let newBudget = state.budget;
+      let expensesAdd = 0;
+      let resultType: 'won' | 'lost' | null = null;
+
+      if (finalAuction.isLeading) {
+        if (state.budget >= finalAuction.currentPrice) {
+          newBudget -= finalAuction.currentPrice;
+          expensesAdd = finalAuction.currentPrice;
+          const newItem: CollectionItem = {
+            ...finalAuction.collection,
+            id: `${finalAuction.collection.id}-won-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            location: 'warehouse' as const,
+            score: calculateCollectionScore(finalAuction.collection)
+          };
+          collections = [...collections, newItem];
+          finalAuction = { ...finalAuction, status: 'won' as const };
+          resultType = 'won';
+          auctionItems = auctionItems.map(a => a.id === updatedAuction.id ? finalAuction : a);
+          state.setNotification({ message: `🎉 大成功！拍得藏品「${finalAuction.collection.name}」！`, type: 'success' });
+          setTimeout(() => {
+            get().showEvent({
+              id: `evt-auction-won-${Date.now()}`,
+              title: '🎉 拍得藏品',
+              description: `恭喜您成功拍得「${finalAuction.collection.name}」！成交价：¥${finalAuction.currentPrice.toLocaleString()}。藏品已收入仓库。`,
+              type: 'achievement',
+              icon: '🏆',
+              triggered: true,
+              condition: {},
+              cycle: state.cycle
+            });
+          }, 300);
+        }
+      } else {
+        finalAuction = { ...finalAuction, status: 'lost' as const };
+        resultType = 'lost';
+        auctionItems = auctionItems.map(a => a.id === updatedAuction.id ? finalAuction : a);
+        state.setNotification({ message: `遗憾！「${finalAuction.collection.name}」被${finalAuction.highestBidder}拍走，成交价¥${finalAuction.currentPrice.toLocaleString()}`, type: 'info' });
+      }
+
+      set({
+        auctionItems,
+        collections,
+        budget: newBudget,
+        expenses: state.expenses + expensesAdd,
+        currentAuctionResult: {
+          type: resultType,
+          itemId: finalAuction.collection.id,
+          price: finalAuction.currentPrice,
+          itemName: finalAuction.collection.name
+        }
+      });
+
+      setTimeout(() => {
+        const currentState = get();
+        const currentItems = currentState.auctionItems;
+        const replaced = currentItems.map(item => {
+          if (item.id === updatedAuction.id && (item.status === 'won' || item.status === 'lost')) {
+            const nextCol = AUCTION_POOL[Math.floor(Math.random() * AUCTION_POOL.length)];
+            return {
+              id: `auction-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              collection: { ...nextCol, score: calculateCollectionScore(nextCol) },
+              startPrice: Math.floor(nextCol.estimatedValue * 0.6),
+              currentPrice: Math.floor(nextCol.estimatedValue * 0.6),
+              myBid: 0,
+              highestBidder: '——',
+              isLeading: false,
+              timeLeft: 3,
+              status: 'active' as const,
+              opponents: AUCTION_OPPONENTS
+                .sort(() => Math.random() - 0.5)
+                .slice(0, 2 + Math.floor(Math.random() * 2)),
+              bidHistory: []
+            };
+          }
+          return item;
+        });
+        set({
+          auctionItems: replaced,
+          currentAuctionResult: { type: null, itemId: null, price: null, itemName: null }
+        });
+        persistSave(get());
+      }, 2000);
+    } else {
+      set({ auctionItems });
+      persistSave(get());
+    }
   },
 
   processAuctionRound: () => {
@@ -645,10 +894,6 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
           id: `${item.id}-won-${Date.now()}-${idx}`,
           score: calculateCollectionScore(item)
         }))];
-        state.setNotification({
-          message: `恭喜！您成功拍得${itemsWon.length}件藏品！`,
-          type: 'success'
-        });
       }
     }
 
@@ -680,6 +925,78 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       budget: newBudget,
       expenses: state.expenses + (state.budget - newBudget)
     });
+    persistSave(get());
+  },
+
+  checkAndUnlockClues: () => {
+    const state = get();
+    let changed = false;
+    const newClues = state.clues.map(clue => {
+      if (clue.unlocked) return clue;
+
+      let repOk = true;
+      if (clue.requiredReputation !== undefined) {
+        repOk = state.reputation >= clue.requiredReputation;
+      }
+      if (!repOk) return clue;
+
+      let cycleOk = true;
+      if (clue.requiredCycle !== undefined) {
+        cycleOk = state.cycle >= clue.requiredCycle;
+      }
+      if (!cycleOk) return clue;
+
+      let collectionsOk = true;
+      if (clue.relatedCollectionIds && clue.relatedCollectionIds.length > 0) {
+        const relatedOwned = clue.relatedCollectionIds.some(cid => {
+          const col = state.collections.find(c => c.id === cid || c.id.startsWith(`${cid}-`));
+          if (!col) return false;
+          if (col.location === 'exhibition') return true;
+          if (col.isAuthenticated && col.isRestored) return true;
+          return false;
+        });
+        if (clue.id === 'clue-005') {
+          const exhibit90s = state.collections.filter(c =>
+            c.location === 'exhibition' && c.actualYear >= 1990 && c.actualYear < 2000
+          ).length;
+          collectionsOk = exhibit90s >= 2;
+        } else if (clue.id === 'clue-006') {
+          const epicExhibit = state.collections.some(c =>
+            (c.rarity === 'epic' || c.rarity === 'legendary') && c.location === 'exhibition'
+          );
+          collectionsOk = epicExhibit;
+        } else if (clue.id === 'clue-007') {
+          const exhibitCount = state.collections.filter(c => c.location === 'exhibition').length;
+          collectionsOk = exhibitCount >= 3;
+        } else if (clue.id === 'clue-008') {
+          const exhibits = state.collections.filter(c => c.location === 'exhibition');
+          collectionsOk = exhibits.length > 0 && exhibits.every(c => c.score >= 50);
+        } else {
+          collectionsOk = relatedOwned;
+        }
+      }
+      if (!collectionsOk) return clue;
+
+      changed = true;
+      return {
+        ...clue,
+        unlocked: true,
+        interviews: clue.interviews.map(i => ({ ...i, unlocked: true }))
+      };
+    });
+
+    if (changed) {
+      const clueUnlocked = newClues.filter(c => c.unlocked).length;
+      const newlyUnlocked = newClues.filter((c, idx) => c.unlocked && !state.clues[idx].unlocked);
+      set({
+        clues: newClues,
+        taskStats: { ...state.taskStats, clueUnlocked }
+      });
+      newlyUnlocked.forEach(clue => {
+        state.setNotification({ message: `新线索解锁！${clue.title}`, type: 'success' });
+      });
+      get().updateTaskProgress();
+    }
   },
 
   updateTaskProgress: () => {
@@ -731,6 +1048,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       message: `任务完成！${task.reward.label}`,
       type: 'success'
     });
+    persistSave(get());
   },
 
   unlockClue: (clueId) => {
@@ -754,6 +1072,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     });
     state.setNotification({ message: `线索已解锁！`, type: 'success' });
     state.updateTaskProgress();
+    persistSave(get());
   },
 
   unlockInterview: (clueId, interviewId) => {
@@ -783,33 +1102,57 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       : state.plan.targetAudience === 'enthusiast' ? 1.2
       : state.plan.targetAudience === 'students' ? 1.8
       : 0.8;
-    const totalVisitorsThisCycle = Math.floor((visitorsBase + reputationBonus) * audienceMultiplier);
+    let totalVisitorsThisCycle = Math.floor((visitorsBase + reputationBonus) * audienceMultiplier);
+    if (state.plan.handbookPublished) {
+      totalVisitorsThisCycle = Math.floor(totalVisitorsThisCycle * 1.15);
+    }
 
-    const ticketPrice = state.plan.targetAudience === 'expert' ? 120
-      : state.plan.targetAudience === 'enthusiast' ? 80
-      : state.plan.targetAudience === 'students' ? 30
-      : 50;
+    let audienceRatios: Record<AudienceType, number>;
+    if (state.plan.targetAudience === 'students') {
+      audienceRatios = { students: 0.6, general: 0.2, enthusiast: 0.1, expert: 0.1 };
+    } else if (state.plan.targetAudience === 'enthusiast') {
+      audienceRatios = { enthusiast: 0.4, general: 0.25, students: 0.15, expert: 0.2 };
+    } else if (state.plan.targetAudience === 'expert') {
+      audienceRatios = { expert: 0.35, enthusiast: 0.3, general: 0.2, students: 0.15 };
+    } else {
+      audienceRatios = { general: 0.5, students: 0.2, enthusiast: 0.2, expert: 0.1 };
+    }
+
+    const byAudience: Record<AudienceType, number> = {
+      general: Math.floor(totalVisitorsThisCycle * audienceRatios.general),
+      enthusiast: Math.floor(totalVisitorsThisCycle * audienceRatios.enthusiast),
+      expert: Math.floor(totalVisitorsThisCycle * audienceRatios.expert),
+      students: Math.floor(totalVisitorsThisCycle * audienceRatios.students)
+    };
+
+    const ticketPriceByAudience: Record<AudienceType, number> = {
+      expert: 120,
+      enthusiast: 80,
+      general: 50,
+      students: 30
+    };
+    const averageTicketPrice =
+      ticketPriceByAudience.expert * audienceRatios.expert +
+      ticketPriceByAudience.enthusiast * audienceRatios.enthusiast +
+      ticketPriceByAudience.general * audienceRatios.general +
+      ticketPriceByAudience.students * audienceRatios.students;
+
+    const ticketPrice = ticketPriceByAudience[state.plan.targetAudience];
     const ticketSales = totalVisitorsThisCycle * ticketPrice;
 
-    const merchandise = Math.floor(totalVisitorsThisCycle * 15 * (state.plan.handbookPublished ? 1.5 : 1));
+    const handbookBonus = Math.min(2.5, 1 + (state.plan.handbookPrinted ?? 0) / 1500);
+    const merchandise = Math.floor(totalVisitorsThisCycle * 15 * handbookBonus);
     const donations = Math.floor(state.reputation * 80 + Math.random() * 3000);
     const sponsorship = state.collectionScore >= 400 ? Math.floor(state.collectionScore * 20) : 0;
 
     const restoration = 0;
-    const marketing = state.plan.handbookPublished ? 2000 : 0;
+    const marketing = 2000 + (state.plan.handbookPrintCost ?? 0);
     const maintenance = Math.floor(totalVisitorsThisCycle * 3);
     const auctionPurchases = 0;
 
     const positive = state.feedbacks.filter(f => f.sentiment === 'positive').length;
     const total = state.feedbacks.length || 1;
     const satisfaction = Math.round(50 + (positive / total) * 40 + state.reputation * 0.1);
-
-    const byAudience: Record<AudienceType, number> = {
-      general: Math.floor(totalVisitorsThisCycle * 0.5),
-      enthusiast: Math.floor(totalVisitorsThisCycle * 0.2),
-      expert: Math.floor(totalVisitorsThisCycle * 0.1),
-      students: Math.floor(totalVisitorsThisCycle * 0.2)
-    };
 
     const { breakdown } = calculateCollectionScoreOverall(
       state.collections,
@@ -824,7 +1167,9 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       phase: 'settlement'
     });
 
-    const newBudget = state.budget + ticketSales + merchandise + donations + sponsorship - marketing - maintenance;
+    const incomeTotal = ticketSales + merchandise + donations + sponsorship;
+    const expenseTotal = marketing + maintenance;
+    const newBudget = state.budget + incomeTotal - expenseTotal;
 
     const report: FinancialReport = {
       cycle: state.cycle,
@@ -843,13 +1188,24 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       visitorStats: {
         total: totalVisitorsThisCycle,
         byAudience,
-        satisfaction: Math.min(100, satisfaction)
+        satisfaction: Math.min(100, satisfaction),
+        averageTicketPrice,
+        handbookBonus,
+        brochureDistributed: state.plan.handbookPrinted ?? 0
       },
       scoreBreakdown: breakdown,
       prevCollectionScore: prevScore,
       newCollectionScore: state.collectionScore,
       prevReputation: prevRep,
-      newReputation: state.reputation
+      newReputation: state.reputation,
+      cycleMetrics: {
+        budgetSnapshot: 0,
+        reputationSnapshot: 0,
+        scoreSnapshot: 0,
+        visitorSnapshot: totalVisitorsThisCycle,
+        incomeTotal,
+        expenseTotal
+      }
     };
 
     const { updated: updatedEvents, triggered } = processTriggeredEvents(
@@ -862,12 +1218,27 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
 
     let finalBudget = newBudget;
     let finalReputation = state.reputation;
+    let collectionsReward: CollectionItem[] = [];
     triggered.forEach(event => {
       if (event.reward) {
         if (event.reward.type === 'budget') {
           finalBudget += event.reward.value as number;
         } else if (event.reward.type === 'reputation') {
           finalReputation = Math.max(0, Math.min(100, finalReputation + (event.reward.value as number)));
+        } else if (event.reward.type === 'collection') {
+          const poolCol = AUCTION_POOL.find(c => c.id === event.reward!.value as string);
+          if (poolCol) {
+            const newCol: CollectionItem = {
+              ...poolCol,
+              id: `${poolCol.id}-reward-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              location: 'warehouse' as const,
+              score: calculateCollectionScore(poolCol)
+            };
+            collectionsReward.push(newCol);
+            setTimeout(() => {
+              get().setNotification({ message: `获得藏品奖励！${poolCol.name}`, type: 'success' });
+            }, 600);
+          }
         }
       }
     });
@@ -878,15 +1249,32 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     const newFeedbacks = generateVisitorFeedback(state.cycle + 1,
       6 + Math.floor(Math.random() * 6));
 
+    const finalCollections = [...state.collections, ...collectionsReward];
+    const { total: newCollectionScore } = calculateCollectionScoreOverall(finalCollections, state.plan, finalReputation);
+
+    report.cycleMetrics.budgetSnapshot = finalBudget;
+    report.cycleMetrics.reputationSnapshot = finalReputation;
+    report.cycleMetrics.scoreSnapshot = newCollectionScore;
+
+    const resetPlan = {
+      ...state.plan,
+      handbookPublished: false,
+      handbookPrinted: 0,
+      handbookPrintCost: 0
+    };
+
     set({
       budget: finalBudget,
       reputation: finalReputation,
+      collectionScore: newCollectionScore,
       totalVisitors: state.totalVisitors + totalVisitorsThisCycle,
       events: updatedEvents,
+      collections: finalCollections,
       reports: [...state.reports, report],
       feedbacks: [...newFeedbacks, ...state.feedbacks].slice(0, 50),
-      income: state.income + ticketSales + merchandise + donations + sponsorship,
-      expenses: state.expenses + marketing + maintenance
+      income: state.income + incomeTotal,
+      expenses: state.expenses + expenseTotal,
+      plan: resetPlan
     });
 
     if (triggered.length > 0) {
@@ -896,6 +1284,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     }
 
     get().showReport(report);
+    get().checkAndUnlockClues();
+    persistSave(get());
   },
 
   advanceCycle: () => {
@@ -907,5 +1297,71 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       expenses: 0
     });
     get().setNotification({ message: `进入第 ${state.cycle + 1} 周期！`, type: 'info' });
+    persistSave(get());
+  },
+
+  resetGame: () => {
+    localStorage.removeItem(SAVE_KEY);
+    set({
+      cycle: 1,
+      phase: 'planning',
+      budget: 100000,
+      reputation: 20,
+      collectionScore: 0,
+      totalVisitors: 0,
+      income: 0,
+      expenses: 0,
+      collections: getInitialCollections(),
+      cases: EXHIBITION_CASES,
+      feedbacks: INITIAL_VISITOR_FEEDBACK,
+      clues: INITIAL_CLUES,
+      tasks: INITIAL_TASKS,
+      auctionItems: createInitialAuctionItems(),
+      events: GAME_EVENTS,
+      reports: [],
+      plan: INITIAL_PLAN,
+      currentModule: 'warehouse',
+      selectedCollectionId: null,
+      selectedCaseId: null,
+      isDragging: false,
+      draggedCollectionId: null,
+      notification: null,
+      showEventModal: false,
+      currentEvent: null,
+      showReportModal: false,
+      lastReport: null,
+      taskStats: INITIAL_TASK_STATS
+    });
+  },
+
+  saveGame: () => {
+    persistSave(get());
+    get().setNotification({ message: '游戏已保存！', type: 'success' });
+  },
+
+  loadGame: (data) => {
+    try {
+      const updates: Partial<GameStoreState> = {};
+      const coreKeys: (keyof GameStoreState)[] = [
+        'cycle', 'phase', 'budget', 'reputation', 'collectionScore',
+        'totalVisitors', 'income', 'expenses', 'collections', 'cases',
+        'feedbacks', 'clues', 'tasks', 'auctionItems', 'events',
+        'reports', 'plan', 'taskStats'
+      ];
+      coreKeys.forEach(key => {
+        if (data[key] !== undefined) {
+          (updates as any)[key] = data[key];
+        }
+      });
+      set(updates as any);
+      persistSave(get());
+      get().setNotification({ message: '存档已导入！', type: 'success' });
+    } catch {
+      get().setNotification({ message: '存档导入失败，格式不正确', type: 'error' });
+    }
+  },
+
+  clearProgress: () => {
+    get().resetGame();
   }
 }));

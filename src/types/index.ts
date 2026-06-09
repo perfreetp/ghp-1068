@@ -167,6 +167,8 @@ export interface ExhibitionPlan {
   handbookCover: string;
   handbookPublished: boolean;
   brochureCount: number;
+  handbookPrintCost: number;
+  handbookPrinted: number;
   routeDesignScore: number;
   themeFitScore: number;
   overallScore: number;
@@ -233,12 +235,23 @@ export interface FinancialReport {
     total: number;
     byAudience: Record<AudienceType, number>;
     satisfaction: number;
+    averageTicketPrice?: number;
+    handbookBonus?: number;
+    brochureDistributed?: number;
   };
   scoreBreakdown: ScoreBreakdown;
   prevCollectionScore: number;
   newCollectionScore: number;
   prevReputation: number;
   newReputation: number;
+  cycleMetrics: {
+    budgetSnapshot: number;
+    reputationSnapshot: number;
+    scoreSnapshot: number;
+    visitorSnapshot: number;
+    incomeTotal: number;
+    expenseTotal: number;
+  };
 }
 
 export type ModuleType = 'hall' | 'warehouse' | 'visitors' | 'research' | 'auction' | 'planning' | 'settlement';
