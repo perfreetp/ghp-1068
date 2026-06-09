@@ -33,6 +33,8 @@ import { processTriggeredEvents, applyEventReward } from '../utils/eventTrigger'
 
 const SAVE_KEY = 'product-museum-save-v1';
 
+export const CALCULATE_HANDBOOK_COST = (brochureCount: number): number => brochureCount * 8;
+
 interface GameStoreState {
   cycle: number;
   phase: GamePhase;
@@ -63,8 +65,9 @@ interface GameStoreState {
   currentEvent: GameEvent | null;
   showReportModal: boolean;
   lastReport: FinancialReport | null;
+  viewingReport: FinancialReport | null;
 
-  currentAuctionResult: { type: 'won' | 'lost' | null; itemId: string | null; price: number | null; itemName?: string | null };
+  currentAuctionResult: { type: 'won' | 'lost' | 'passed' | null; itemId: string | null; price: number | null; itemName?: string | null; wonBidder?: string | null };
 
   taskStats: {
     authCount: number;
@@ -268,8 +271,9 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
   currentEvent: null,
   showReportModal: false,
   lastReport: null,
+  viewingReport: null,
 
-  currentAuctionResult: { type: null, itemId: null, price: null, itemName: null },
+  currentAuctionResult: { type: null, itemId: null, price: null, itemName: null, wonBidder: null },
 
   taskStats: loadedData?.taskStats ?? INITIAL_TASK_STATS,
 
@@ -286,8 +290,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
   },
   showEvent: (event) => set({ showEventModal: true, currentEvent: event }),
   closeEventModal: () => set({ showEventModal: false, currentEvent: null }),
-  showReport: (report) => set({ showReportModal: true, lastReport: report }),
-  closeReportModal: () => set({ showReportModal: false }),
+  showReport: (report) => set({ showReportModal: true, lastReport: report, viewingReport: report }),
+  closeReportModal: () => set({ showReportModal: false, viewingReport: null }),
 
   addBudget: (amount) => set((state) => ({
     budget: state.budget + amount,
@@ -566,7 +570,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
   publishHandbook: () => {
     const state = get();
     const brochureCount = state.plan.brochureCount;
-    const cost = brochureCount * 8;
+    const cost = CALCULATE_HANDBOOK_COST(brochureCount);
     if (!state.deductBudget(cost)) return;
     const plan = {
       ...state.plan,
@@ -717,9 +721,17 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       let collections = state.collections;
       let newBudget = state.budget;
       let expensesAdd = 0;
-      let resultType: 'won' | 'lost' | null = null;
+      let resultType: 'won' | 'lost' | 'passed' | null = null;
+      let wonBidder: string | null = null;
 
-      if (finalAuction.isLeading) {
+      const anyBid = finalAuction.bidHistory && finalAuction.bidHistory.length > 0;
+
+      if (!anyBid) {
+        finalAuction = { ...finalAuction, status: 'passed' as const };
+        resultType = 'passed';
+        auctionItems = auctionItems.map(a => a.id === updatedAuction.id ? finalAuction : a);
+        state.setNotification({ message: `😐 「${finalAuction.collection.name}」无人出价，已流拍。`, type: 'info' });
+      } else if (finalAuction.isLeading) {
         if (state.budget >= finalAuction.currentPrice) {
           newBudget -= finalAuction.currentPrice;
           expensesAdd = finalAuction.currentPrice;
@@ -732,6 +744,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
           collections = [...collections, newItem];
           finalAuction = { ...finalAuction, status: 'won' as const };
           resultType = 'won';
+          wonBidder = '你';
           auctionItems = auctionItems.map(a => a.id === updatedAuction.id ? finalAuction : a);
           state.setNotification({ message: `🎉 大成功！拍得藏品「${finalAuction.collection.name}」！`, type: 'success' });
           setTimeout(() => {
@@ -750,6 +763,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       } else {
         finalAuction = { ...finalAuction, status: 'lost' as const };
         resultType = 'lost';
+        wonBidder = finalAuction.highestBidder;
         auctionItems = auctionItems.map(a => a.id === updatedAuction.id ? finalAuction : a);
         state.setNotification({ message: `遗憾！「${finalAuction.collection.name}」被${finalAuction.highestBidder}拍走，成交价¥${finalAuction.currentPrice.toLocaleString()}`, type: 'info' });
       }
@@ -763,7 +777,8 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
           type: resultType,
           itemId: finalAuction.collection.id,
           price: finalAuction.currentPrice,
-          itemName: finalAuction.collection.name
+          itemName: finalAuction.collection.name,
+          wonBidder
         }
       });
 
@@ -771,7 +786,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
         const currentState = get();
         const currentItems = currentState.auctionItems;
         const replaced = currentItems.map(item => {
-          if (item.id === updatedAuction.id && (item.status === 'won' || item.status === 'lost')) {
+          if (item.id === updatedAuction.id && (item.status === 'won' || item.status === 'lost' || item.status === 'passed')) {
             const nextCol = AUCTION_POOL[Math.floor(Math.random() * AUCTION_POOL.length)];
             return {
               id: `auction-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -847,7 +862,18 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
       const newTimeLeft = auction.timeLeft - 1;
 
       if (newTimeLeft <= 0) {
-        if (isLeading) {
+        const anyBid = bidHistory && bidHistory.length > 0;
+        if (!anyBid) {
+          return {
+            ...auction,
+            currentPrice,
+            highestBidder,
+            isLeading,
+            bidHistory,
+            timeLeft: 0,
+            status: 'passed' as const
+          };
+        } else if (isLeading) {
           itemsWon.push({ ...auction.collection, location: 'warehouse' as const });
           totalCost += currentPrice;
           return {
@@ -898,7 +924,7 @@ export const useGameStore = create<GameStoreState & GameStoreActions>((set, get)
     }
 
     const newAuctionItems = auctionItems.map(item => {
-      if (item.status === 'won' || item.status === 'lost') {
+      if (item.status === 'won' || item.status === 'lost' || item.status === 'passed') {
         const nextCol = AUCTION_POOL[Math.floor(Math.random() * AUCTION_POOL.length)];
         return {
           id: `auction-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,

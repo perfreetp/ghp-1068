@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { useGameStore } from '../store/useGameStore';
+import { useGameStore, CALCULATE_HANDBOOK_COST } from '../store/useGameStore';
 import { formatCurrency } from '../utils/formatters';
 import { RarityBadge } from '../components/RarityBadge';
-import { CATEGORY_ICONS, AUDIENCE_NAMES } from '../types';
+import { CATEGORY_ICONS, AUDIENCE_NAMES, AudienceType } from '../types';
 import { ClipboardList, Calendar, Users as UsersIcon, BookOpen, Star, FileText, Printer, Download, Sparkles } from 'lucide-react';
 
 const THEME_OPTIONS = [
@@ -13,14 +13,19 @@ const THEME_OPTIONS = [
   { value: 'special', label: '限定特展' }
 ];
 
-const AUDIENCE_OPTIONS = [
-  { value: 'students', label: '学生群体' },
-  { value: 'workers', label: '上班族' },
-  { value: 'elderly', label: '退休老人' },
-  { value: 'enthusiast', label: '科技爱好者' },
-  { value: 'designers', label: '设计从业者' },
-  { value: 'family', label: '家庭游客' }
+const AUDIENCE_OPTIONS: { value: AudienceType; label: string; tip: string; icon: string }[] = [
+  { value: 'students', label: '学生群体', tip: '数量多但票价低，¥30/人', icon: '🎒' },
+  { value: 'general', label: '普通大众', tip: '均衡选择，¥50/人', icon: '👨‍👩‍👧' },
+  { value: 'enthusiast', label: '科技爱好者', tip: '消费力强，¥80/人', icon: '🔬' },
+  { value: 'expert', label: '专业人士', tip: '人数少但票价最高，¥120/人', icon: '🎓' }
 ];
+
+const TICKET_PRICES: Record<AudienceType, number> = {
+  students: 30,
+  general: 50,
+  enthusiast: 80,
+  expert: 120
+};
 
 export default function Planning() {
   const plan = useGameStore(s => s.plan);
@@ -35,7 +40,7 @@ export default function Planning() {
   const [themeType, setThemeType] = useState('tech_history');
   const [startYear, setStartYear] = useState(plan.startYear);
   const [endYear, setEndYear] = useState(plan.endYear);
-  const [audiences, setAudiences] = useState<string[]>([plan.targetAudience]);
+  const [targetAudience, setTargetAudience] = useState<AudienceType>(plan.targetAudience);
   const [expectedVisitors, setExpectedVisitors] = useState(plan.brochureCount);
   const [budgetAllocation, setBudgetAllocation] = useState({
     maintenance: 30,
@@ -49,8 +54,17 @@ export default function Planning() {
   [collections]);
 
   const handbookCost = useMemo(() => {
-    return Math.floor(3000 + expectedVisitors * 2);
+    return CALCULATE_HANDBOOK_COST(expectedVisitors);
   }, [expectedVisitors]);
+
+  const audienceMultiplier = targetAudience === 'general' ? 1.5
+    : targetAudience === 'enthusiast' ? 1.2
+    : targetAudience === 'students' ? 1.8
+    : 0.8;
+
+  const visitorsBase = Math.floor(collectionScore * 2.5) + Math.floor((20) * 15);
+  const previewVisitors = Math.floor(visitorsBase * audienceMultiplier);
+  const previewTicketIncome = previewVisitors * TICKET_PRICES[targetAudience];
 
   const themeScores = useMemo(() => {
     const exhibited = exhibitedCollections;
@@ -77,18 +91,13 @@ export default function Planning() {
     setBudgetAllocation(prev => ({ ...prev, [key]: value }));
   };
 
-  const toggleAudience = (val: string) => {
-    setAudiences(prev =>
-      prev.includes(val) ? prev.filter(a => a !== val) : [...prev, val]
-    );
-  };
-
   const handlePublish = () => {
     updatePlan({
       theme: exhibitionName,
       themeDescription: themeDesc,
       startYear,
       endYear,
+      targetAudience,
       brochureCount: expectedVisitors,
       handbookTitle: `${exhibitionName} - 典藏册`
     });
@@ -110,7 +119,7 @@ export default function Planning() {
           <h1 className="text-3xl font-serif font-bold text-museum-darkgreen mb-2 flex items-center gap-3">
             <ClipboardList className="w-8 h-8 text-museum-brass" />
             📋 展览策划中心
-            <span className="ml-auto text-sm font-sans font-normal text-museum-ink/60 flex gap-4">
+            <span className="ml-auto text-sm font-sans font-normal text-museum-ink/60 flex gap-4 flex-wrap">
               <span className="flex items-center gap-1">
                 <BookOpen className="w-4 h-4" />
                 当前主题：<span className="font-semibold text-museum-darkgreen">{THEME_OPTIONS.find(t => t.value === themeType)?.label}</span>
@@ -121,13 +130,39 @@ export default function Planning() {
               </span>
               <span className="flex items-center gap-1">
                 <UsersIcon className="w-4 h-4" />
-                受众类型：<span className="font-semibold">{audiences.length}类</span>
+                目标受众：<span className="font-semibold">{AUDIENCE_NAMES[targetAudience]}</span>
               </span>
               <span className="flex items-center gap-1">
                 预计手册成本：<span className="font-mono font-bold text-museum-wine">{formatCurrency(handbookCost)}</span>
               </span>
             </span>
           </h1>
+          <div className="grid grid-cols-4 gap-3 mt-4">
+            <div className="p-3 rounded-xl bg-museum-darkgreen/5 border-2 border-museum-darkgreen/20">
+              <div className="text-[11px] text-museum-ink/50 mb-1">🎯 当前受众平均票价</div>
+              <div className="text-2xl font-bold font-serif text-museum-darkgreen tabular-nums">
+                ¥{TICKET_PRICES[targetAudience]}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-museum-brass/10 border-2 border-museum-brass/30">
+              <div className="text-[11px] text-museum-ink/50 mb-1">📊 预估访客数</div>
+              <div className="text-2xl font-bold font-serif text-museum-darkgreen tabular-nums">
+                {previewVisitors.toLocaleString()} 人
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-green-50 border-2 border-green-300/50">
+              <div className="text-[11px] text-museum-ink/50 mb-1">💰 预估门票收入</div>
+              <div className="text-2xl font-bold font-serif text-green-700 tabular-nums">
+                {formatCurrency(previewTicketIncome)}
+              </div>
+            </div>
+            <div className="p-3 rounded-xl bg-museum-parchment/50 border-2 border-museum-brass/30">
+              <div className="text-[11px] text-museum-ink/50 mb-1">📖 手册单价（8元/册）</div>
+              <div className="text-2xl font-bold font-serif text-museum-darkgreen tabular-nums">
+                {expectedVisitors}册 / {formatCurrency(handbookCost)}
+              </div>
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-12 gap-6">
@@ -195,26 +230,40 @@ export default function Planning() {
                   </div>
                 </div>
                 <div className="col-span-2">
-                  <label className="label-museum block mb-2">目标受众</label>
+                  <label className="label-museum block mb-2">
+                    目标受众 <span className="text-xs text-museum-ink/40 ml-2">（单选，将影响票价和访客结构）</span>
+                  </label>
                   <div className="grid grid-cols-2 gap-2">
-                    {AUDIENCE_OPTIONS.map(opt => (
-                      <button
-                        key={opt.value}
-                        onClick={() => toggleAudience(opt.value)}
-                        className={`text-sm py-2 px-3 rounded-lg border-2 transition-all text-left ${
-                          audiences.includes(opt.value)
-                            ? 'border-museum-brass bg-museum-brass/15 text-museum-darkgreen font-semibold'
-                            : 'border-museum-brass/20 bg-museum-cream text-museum-ink/60 hover:border-museum-brass/40'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    {AUDIENCE_OPTIONS.map(opt => {
+                      const selected = targetAudience === opt.value;
+                      return (
+                        <button
+                          key={opt.value}
+                          type="button"
+                          onClick={() => setTargetAudience(opt.value)}
+                          className={`text-sm py-3 px-3 rounded-lg border-2 transition-all text-left ${
+                            selected
+                              ? 'border-museum-darkgreen bg-museum-darkgreen/10 text-museum-darkgreen font-semibold shadow-md'
+                              : 'border-museum-brass/20 bg-museum-cream text-museum-ink/60 hover:border-museum-brass/40 hover:bg-white'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-lg">{opt.icon}</span>
+                            <span>{opt.label}</span>
+                            {selected && <span className="ml-auto text-xs text-museum-darkgreen">✓</span>}
+                          </div>
+                          <div className={`text-[11px] ${selected ? 'text-museum-darkgreen/80' : 'text-museum-ink/40'}`}>
+                            {opt.tip}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="col-span-2">
                   <label className="label-museum block mb-2">
-                    预期访客量：<span className="font-mono text-museum-brass">{expectedVisitors} 人</span>
+                    手册印量：<span className="font-mono text-museum-brass">{expectedVisitors} 册</span>
+                    <span className="ml-3 text-xs text-museum-ink/40">（=预计访客数，¥{formatCurrency(handbookCost / expectedVisitors)}/册）</span>
                   </label>
                   <input
                     type="range" min={500} max={5000} step={100}
@@ -223,7 +272,9 @@ export default function Planning() {
                     className="w-full accent-museum-brass"
                   />
                   <div className="flex justify-between text-xs text-museum-ink/40 font-mono mt-1">
-                    <span>500</span><span>2750</span><span>5000</span>
+                    <span>500<br /><span className="text-museum-ink/30">{formatCurrency(500 * 8)}</span></span>
+                    <span>2750<br /><span className="text-museum-ink/30">{formatCurrency(2750 * 8)}</span></span>
+                    <span>5000<br /><span className="text-museum-ink/30">{formatCurrency(5000 * 8)}</span></span>
                   </div>
                 </div>
                 <div className="col-span-2">
@@ -279,8 +330,12 @@ export default function Planning() {
                     <span className="font-semibold">{THEME_OPTIONS.find(t => t.value === themeType)?.label}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-museum-ink/50">👤 策展人</span>
-                    <span className="font-semibold text-museum-darkgreen">你</span>
+                    <span className="text-museum-ink/50">👤 目标受众</span>
+                    <span className="font-semibold text-museum-darkgreen">{AUDIENCE_NAMES[targetAudience]}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-museum-ink/50">🎟️ 平均票价</span>
+                    <span className="font-mono font-bold text-museum-wine">{formatCurrency(TICKET_PRICES[targetAudience])}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-museum-ink/50">🏛️ 展出藏品</span>
@@ -314,10 +369,20 @@ export default function Planning() {
                     <Download className="w-3 h-3" />PDF导出
                   </button>
                 </div>
+                <div className={`text-xs mb-3 p-2 rounded-lg text-center ${
+                  budget < handbookCost
+                    ? 'bg-red-50 text-red-600 border border-red-200'
+                    : 'bg-green-50 text-green-700 border border-green-200'
+                }`}>
+                  {budget < handbookCost
+                    ? `⚠️ 预算不足！当前预算 ${formatCurrency(budget)}，需 ${formatCurrency(handbookCost)}`
+                    : `✅ 预算充足（${formatCurrency(budget)}），发布后将扣除 ${formatCurrency(handbookCost)}`
+                  }
+                </div>
                 <button
                   onClick={handlePublish}
                   disabled={budget < handbookCost}
-                  className="w-full btn-gold py-3 flex items-center justify-center gap-2 font-bold"
+                  className="w-full btn-gold py-3 flex items-center justify-center gap-2 font-bold disabled:grayscale disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Sparkles className="w-4 h-4" />
                   发布展览手册（花费 {formatCurrency(handbookCost)}）

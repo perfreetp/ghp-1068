@@ -148,7 +148,7 @@ export interface AuctionItem {
   highestBidder: string;
   isLeading: boolean;
   timeLeft: number;
-  status: 'upcoming' | 'active' | 'ended' | 'won' | 'lost';
+  status: 'upcoming' | 'active' | 'ended' | 'won' | 'lost' | 'passed';
   opponents: AuctionOpponent[];
   bidHistory: { bidder: string; amount: number; time: number }[];
 }

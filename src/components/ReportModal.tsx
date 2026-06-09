@@ -15,15 +15,25 @@ interface TrendConfig {
 }
 
 export const ReportModal: React.FC = () => {
-  const { showReportModal, reports, lastReport, closeReportModal, showReport } = useGameStore();
+  const { showReportModal, reports, lastReport, viewingReport, closeReportModal, showReport } = useGameStore();
+
   const [activeTab, setActiveTab] = useState<'current' | 'trend'>('current');
   const [selectedCycleIdx, setSelectedCycleIdx] = useState<number | null>(null);
 
+  const trendReports = useMemo(() => reports.slice(-12), [reports]);
+
   if (!showReportModal) return null;
 
-  const report = selectedCycleIdx !== null && reports[selectedCycleIdx]
-    ? reports[selectedCycleIdx]
-    : lastReport || (reports.length > 0 ? reports[reports.length - 1] : null);
+  let report = viewingReport;
+  if (!report) {
+    if (selectedCycleIdx !== null && reports[selectedCycleIdx]) {
+      report = reports[selectedCycleIdx];
+    } else if (lastReport) {
+      report = lastReport;
+    } else if (reports.length > 0) {
+      report = reports[reports.length - 1];
+    }
+  }
 
   if (!report) return null;
 
@@ -49,8 +59,6 @@ export const ReportModal: React.FC = () => {
 
   const incomePercent = totalIncome > 0 ? (totalIncome / Math.max(totalIncome, totalExpense)) * 100 : 0;
   const expensePercent = totalExpense > 0 ? (totalExpense / Math.max(totalIncome, totalExpense)) * 100 : 0;
-
-  const trendReports = useMemo(() => reports.slice(-12), [reports]);
 
   const trendConfigs: TrendConfig[] = [
     {
@@ -87,6 +95,15 @@ export const ReportModal: React.FC = () => {
     }
   ];
 
+  const handleBarClick = (idx: number) => {
+    const globalIdx = reports.length - trendReports.length + idx;
+    const targetReport = reports[globalIdx];
+    if (!targetReport) return;
+    setSelectedCycleIdx(globalIdx);
+    setActiveTab('current');
+    showReport(targetReport);
+  };
+
   const renderTrendBlock = (config: TrendConfig) => {
     const values = trendReports.map(r => r.cycleMetrics[config.key]);
     const maxVal = Math.max(...values, 1);
@@ -94,13 +111,6 @@ export const ReportModal: React.FC = () => {
     const prev = values.length >= 2 ? values[values.length - 2] : 0;
     const diff = prev > 0 ? ((latest - prev) / prev) * 100 : 0;
     const isUp = diff >= 0;
-
-    const handleBarClick = (idx: number) => {
-      const globalIdx = reports.length - trendReports.length + idx;
-      setSelectedCycleIdx(globalIdx);
-      setActiveTab('current');
-      showReport(reports[globalIdx]);
-    };
 
     return (
       <div
@@ -133,13 +143,15 @@ export const ReportModal: React.FC = () => {
           {trendReports.map((r, idx) => {
             const val = r.cycleMetrics[config.key];
             const heightPct = (val / maxVal) * 100;
+            const globalIdx = reports.length - trendReports.length + idx;
+            const isSelected = selectedCycleIdx === globalIdx;
             return (
               <div
                 key={r.cycle}
                 className="flex-1 group relative flex items-end"
               >
                 <div
-                  className={`w-full rounded-t-md bg-gradient-to-t ${config.color} cursor-pointer transition-all hover:brightness-110`}
+                  className={`w-full rounded-t-md bg-gradient-to-t ${config.color} cursor-pointer transition-all hover:brightness-110 ${isSelected ? 'ring-2 ring-offset-1 ring-museum-darkgreen' : ''}`}
                   style={{ height: `${Math.max(heightPct, 3)}%` }}
                   onClick={() => handleBarClick(idx)}
                 />
@@ -190,7 +202,7 @@ export const ReportModal: React.FC = () => {
               <div className="flex items-center gap-2 mt-0.5 text-museum-ink/60 text-sm">
                 <Calendar className="w-4 h-4" />
                 <span>第 {report.cycle} 周期结算报告</span>
-                {selectedCycleIdx !== null && (
+                {viewingReport && reports.length > 0 && reports[reports.length - 1]?.cycle !== report.cycle && (
                   <span className="text-museum-brass ml-1">（查看历史）</span>
                 )}
               </div>
@@ -350,6 +362,54 @@ export const ReportModal: React.FC = () => {
                     <div className="text-xs text-museum-ink/60 mt-1">触发事件数</div>
                   </div>
                 </div>
+
+                {report.visitorStats.averageTicketPrice !== undefined && (
+                  <div className="pt-4 border-t border-museum-brass/30">
+                    <h3 className="font-bold font-serif text-museum-darkgreen mb-3">门票 & 访客结构</h3>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div className="p-3 bg-green-50/50 rounded-lg border border-green-200/50">
+                        <div className="text-xs text-museum-ink/50 mb-1">平均票价</div>
+                        <div className="font-bold font-serif text-lg text-museum-darkgreen tabular-nums">
+                          ¥{report.visitorStats.averageTicketPrice.toFixed(1)}
+                        </div>
+                      </div>
+                      {report.visitorStats.handbookBonus !== undefined && (
+                        <div className="p-3 bg-museum-brass/10 rounded-lg border border-museum-brass/30">
+                          <div className="text-xs text-museum-ink/50 mb-1">手册加成系数</div>
+                          <div className="font-bold font-serif text-lg text-museum-darkgreen tabular-nums">
+                            ×{report.visitorStats.handbookBonus.toFixed(2)}
+                          </div>
+                        </div>
+                      )}
+                      {report.visitorStats.brochureDistributed !== undefined && (
+                        <div className="col-span-2 p-3 bg-museum-parchment/50 rounded-lg">
+                          <div className="text-xs text-museum-ink/50 mb-2">访客结构（共{report.visitorStats.total.toLocaleString()}人）</div>
+                          <div className="grid grid-cols-4 gap-2">
+                            {[
+                              { key: 'students', label: '学生', color: 'bg-blue-500', price: 30 },
+                              { key: 'general', label: '普通', color: 'bg-museum-darkgreen', price: 50 },
+                              { key: 'enthusiast', label: '爱好者', color: 'bg-museum-wine', price: 80 },
+                              { key: 'expert', label: '专业', color: 'bg-museum-slateblue', price: 120 },
+                            ].map(item => {
+                              const n = report.visitorStats.byAudience?.[item.key as keyof typeof report.visitorStats.byAudience] ?? 0;
+                              const pct = report.visitorStats.total > 0 ? (n / report.visitorStats.total) * 100 : 0;
+                              return (
+                                <div key={item.key} className="text-center">
+                                  <div className={`h-1.5 rounded-full ${item.color} mb-1.5`} style={{ width: `${Math.max(pct, 5)}%` }} />
+                                  <div className="text-[10px] text-museum-ink/60">{item.label} ¥{item.price}</div>
+                                  <div className="text-sm font-bold tabular-nums text-museum-darkgreen">
+                                    {n.toLocaleString()}
+                                  </div>
+                                  <div className="text-[10px] text-museum-ink/40">{pct.toFixed(0)}%</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="pt-2">
                   <h3 className="font-bold font-serif text-museum-darkgreen mb-3">收支对比</h3>

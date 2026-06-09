@@ -182,9 +182,33 @@ export default function Auction() {
                   {currentAuctionResult.itemName}
                 </div>
                 <div className="text-gray-600">
-                  被 <span className="font-bold text-museum-wine">{currentAuction.highestBidder}</span> 拍走
+                  被 <span className="font-bold text-museum-wine">{currentAuctionResult.wonBidder}</span> 拍走
                   <span className="mx-2">·</span>
                   成交价 <span className="font-mono font-bold text-lg">¥{currentAuctionResult.price?.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {currentAuctionResult.type === 'passed' && (
+          <div className="mb-6 card-museum p-6 border-2 border-dashed border-museum-brass/50 bg-gradient-to-br from-museum-parchment/40 to-museum-cream">
+            <div className="flex items-center gap-6">
+              <div className="w-24 h-24 rounded-2xl bg-museum-parchment/60 flex items-center justify-center border-2 border-dashed border-museum-brass/40">
+                <span className="text-5xl">🪧</span>
+              </div>
+              <div className="flex-1">
+                <div className="flex items-center gap-3 mb-1">
+                  <span className="text-xl font-serif font-bold text-museum-brass">😐 本次流拍</span>
+                  <span className="px-3 py-1 rounded-full bg-museum-brass/20 text-museum-darkgreen text-xs font-bold">
+                    无人出价
+                  </span>
+                </div>
+                <div className="text-2xl font-serif font-semibold text-museum-ink mb-2">
+                  {currentAuctionResult.itemName}
+                </div>
+                <div className="text-gray-600">
+                  所有竞价者都保持沉默，未达到交易条件。<span className="text-museum-ink/40 ml-2">（不扣预算，未入库）</span>
                 </div>
               </div>
             </div>
